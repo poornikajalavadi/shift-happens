@@ -8,3 +8,5 @@ Data-Pipeline/logs/
 Data-Pipeline/data/raw/
 Data-Pipeline/data/processed/
 *.pkl
+Data-Pipeline\credentials.json
+Data-Pipeline/credentials.json

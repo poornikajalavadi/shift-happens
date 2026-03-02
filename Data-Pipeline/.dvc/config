@@ -1,0 +1,5 @@
+[core]
+    remote = gcs_remote
+['remote "gcs_remote"']
+    url = gs://shifthappens-dvc-storage-18
+    credentialpath = ../credentials.json
