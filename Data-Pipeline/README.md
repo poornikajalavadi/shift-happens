@@ -14,50 +14,45 @@ This repository contains the Airflow data pipeline for ShiftHappens. The pipelin
 ## Environment Setup & Reproducibility
 To replicate this pipeline on another machine, ensure you have Python 3.9+ installed and follow these steps:
 
-Clone the repository:
+## Environment Setup & Reproducibility
+Because this pipeline utilizes parallel task execution to process multiple tables simultaneously, it requires a distributed Airflow environment (CeleryExecutor, Redis, and PostgreSQL). We use Docker Compose to spin up this production-grade architecture locally.
+
+**Prerequisites:**
+* Docker and Docker Compose installed
+* A Kaggle account (for API credentials)
+
+1. Clone the repository:
 ```bash
-git clone https://github.com/semwalhritvik/shift-happens.git
+git clone [https://github.com/semwalhritvik/shift-happens.git](https://github.com/semwalhritvik/shift-happens.git)
 cd shift-happens/Data-Pipeline
 ```
 
-Create and activate a virtual environment:
+2. Configure Environment Variables:
+Create a .env file in the root of the Data-Pipeline directory to provide your Kaggle credentials and set your Airflow user ID:
+
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+KAGGLE_USERNAME=your_kaggle_username
+KAGGLE_KEY=your_kaggle_api_key
+AIRFLOW_UID=50000
 ```
 
-Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-Pull versioned data with DVC:
-This project uses DVC to track the dataset. To pull the exact data versions used in this pipeline:
+3. Pull Versioned Data with DVC:
+We use Data Version Control (DVC) to track our datasets. Pull the exact data versions used in this pipeline before running Airflow:
 ```bash
 dvc pull
 ```
 
-## Running the Airflow Pipeline
-This pipeline is orchestrated using Apache Airflow.
+4. Initialize and Start the Airflow Cluster:
+First, initialize the Airflow database and create the default user:
 
-Initialize the Airflow database and setup:
 ```bash
-export AIRFLOW_HOME=$(pwd)
-airflow db init
-airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@shifthappens.local
+docker compose up airflow-init
 ```
 
-Start the Airflow Scheduler and Webserver:
-Open two separate terminal windows.
+Once initialization is complete (exited with code 0), start all services in detached mode:
 
-Terminal 1:
 ```bash
-airflow scheduler
-```
-
-Terminal 2:
-```bash
-airflow webserver -p 8080
+docker compose up -d
 ```
 
 Trigger the DAG:
