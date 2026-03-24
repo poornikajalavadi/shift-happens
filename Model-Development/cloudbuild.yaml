@@ -1,0 +1,52 @@
+
+
+# cloudbuild.yaml — ShiftHappens Model Development CI/CD Pipeline
+steps:
+
+  #Step 1: Install deps + run tests
+  - name: 'python:3.10'
+    id: 'setup-and-test'
+    entrypoint: 'bash'
+    dir: 'Model-Development'
+    args:
+      - '-c'
+      - |
+        pip install -r requirements.txt
+        mkdir -p logs models reports
+        pytest tests/ -v --tb=short
+
+  #Step 2: Run full pipeline 
+  - name: 'python:3.10'
+    id: 'run-pipeline'
+    entrypoint: 'bash'
+    dir: 'Model-Development'
+    args:
+      - '-c'
+      - |
+        pip install -r requirements.txt
+        python3 scripts/preprocessor.py
+        python3 scripts/model_trainer.py
+        python3 scripts/hyperparameter_tuner.py
+        python3 scripts/model_validator.py
+        python3 scripts/bias_detector.py
+        python3 scripts/model_selection.py
+        python3 scripts/sensitivity_analysis.py
+        python3 scripts/registry_push.py
+    env:
+      - 'GCS_BUCKET=${_GCS_BUCKET}'
+    waitFor: ['setup-and-test']
+
+  #Step 3: Upload reports
+  - name: 'gcr.io/cloud-builders/gsutil'
+    id: 'upload-reports'
+    args: ['-m', 'cp', '-r', 'Model-Development/reports/', 'gs://${_GCS_BUCKET}/build-reports/${BUILD_ID}/']
+    waitFor: ['run-pipeline']
+
+substitutions:
+  _GCS_BUCKET: 'shifthappens-model-registry'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+timeout: '3600s'
