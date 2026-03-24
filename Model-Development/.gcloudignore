@@ -9,6 +9,9 @@ Model-Development/models/
 # Data files managed via DVC
 Model-Development/data/
 
+# Data files managed via DVC
+Model-Development/data/
+
 # Reports and generated figures
 Model-Development/reports/
 

@@ -1,6 +1,13 @@
 
 
 steps:
+  - name: 'gcr.io/cloud-builders/gsutil'
+    id: 'download-data'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - 'mkdir -p Data-Pipeline/data/processed && gsutil cp gs://shifthappens-data/application_train_merged.pkl Data-Pipeline/data/processed/'
+
   - name: 'python:3.10'
     id: 'test'
     entrypoint: 'bash'
@@ -8,6 +15,7 @@ steps:
     args:
       - '-c'
       - 'pip install -r requirements.txt && mkdir -p logs models reports && pytest tests/ -v --tb=short'
+    waitFor: ['download-data']
 
   - name: 'python:3.10'
     id: 'pipeline'
