@@ -244,7 +244,7 @@ To ensure our model's decisions are transparent, fair, and easily explainable to
 
 1. Global Feature Importance
    
-![Global SHAP summary plot](assets/Figure_1.png)
+![Global SHAP summary plot](reports/Figure_1.png)
 
 The global summary plot reveals the top drivers of default risk across the entire dataset:
 
@@ -254,7 +254,7 @@ Historical Behaviors: Engineered features from our Airflow pipeline, such as INS
 
 1. Categorical Risk Drivers: Occupation Type
    
-![OCCUPATION_TYPR Dependence Plot](assets/Figure_2.png)
+![OCCUPATION_TYPR Dependence Plot](reports/Figure_2.png)
 
 By utilizing SHAP dependence plots, we opened the "black box" to unpack the exact risk assigned to non-ordinal categories:
 
@@ -266,7 +266,7 @@ The Power of 'Missing': Applicants who declined to state their occupation actual
 
 1. Continuous Risk Discovery: Age Dynamics
    
-![DAYS_BIRTH Dependence Plot](assets/Figure_3.png)
+![DAYS_BIRTH Dependence Plot](reports/Figure_3.png)
 
 The dependence plot for DAYS_BIRTH showcases LightGBM's ability to capture complex, non-linear relationships that traditional linear models miss:
 
