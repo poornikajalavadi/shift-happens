@@ -1,7 +1,20 @@
+# Intermediate models — too large for GitHub
+models/best_model_*.pkl
+
+# Allow final production model
+!models/final_model_debiased.pkl
+
+# Data files — too large for GitHub
 data/
-models/
+
+# Logs — generated at runtime
 logs/
+
+# Python cache
 __pycache__/
 *.pyc
+*.pyo
 .venv/
+
+# MLflow runs
 mlruns/
