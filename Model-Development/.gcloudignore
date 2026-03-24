@@ -1,0 +1,26 @@
+.gcloudignore
+.git
+.gitignore
+
+# Large model files
+Model-Development/models/
+*.pkl
+
+# Data files managed via DVC
+Model-Development/data/
+
+# Reports and generated figures
+Model-Development/reports/
+
+# Logs and runtime artifacts
+Model-Development/logs/
+Model-Development/mlruns/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Mac system files
+.DS_Store
