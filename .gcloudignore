@@ -9,6 +9,9 @@ Model-Development/models/
 # Data files managed via DVC
 Model-Development/data/
 
+# Data pipeline directory — data pulled from GCS at build time
+Data-Pipeline/
+
 # Reports and generated figures
 Model-Development/reports/
 

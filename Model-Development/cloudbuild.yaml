@@ -6,7 +6,7 @@ steps:
     entrypoint: 'bash'
     args:
       - '-c'
-      - 'mkdir -p Data-Pipeline/data/processed && gsutil cp gs://shifthappens-data/application_train_merged.pkl Data-Pipeline/data/processed/'
+      - 'mkdir -p /workspace/Data-Pipeline/data/processed && gsutil cp gs://shifthappens-data/application_train_merged.pkl /workspace/Data-Pipeline/data/processed/'
 
   - name: 'python:3.10'
     id: 'test'
@@ -24,12 +24,12 @@ steps:
     env: ['GCS_BUCKET=${_GCS_BUCKET}']
     args:
       - '-c'
-      - 'pip install -r requirements.txt && python3 scripts/preprocessor.py && python3 scripts/model_trainer.py && python3 scripts/hyperparameter_tuner.py && python3 scripts/model_validator.py && python3 scripts/bias_detector.py && python3 scripts/model_selection.py && python3 scripts/sensitivity_analysis.py && python3 scripts/registry_push.py'
+      - 'pip install -r requirements.txt && mkdir -p logs models reports && python3 scripts/preprocessor.py && python3 scripts/model_trainer.py && python3 scripts/hyperparameter_tuner.py && python3 scripts/model_validator.py && python3 scripts/bias_detector.py && python3 scripts/model_selection.py && python3 scripts/sensitivity_analysis.py && python3 scripts/registry_push.py'
     waitFor: ['test']
 
   - name: 'gcr.io/cloud-builders/gsutil'
     id: 'reports'
-    args: ['-m', 'cp', '-r', 'Model-Development/reports/', 'gs://${_GCS_BUCKET}/build-reports/${BUILD_ID}/']
+    args: ['-m', 'cp', '-r', '/workspace/Model-Development/reports/', 'gs://${_GCS_BUCKET}/build-reports/${BUILD_ID}/']
     waitFor: ['pipeline']
 
 substitutions:
