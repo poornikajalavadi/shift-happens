@@ -1,20 +1,22 @@
-# Intermediate models — too large for GitHub
+# Intermediate trained model files — excluded due to file size constraints
 models/best_model_*.pkl
 
-# Allow final production model
+# Final production-ready debiased model — included for repository reproducibility
 !models/final_model_debiased.pkl
 
-# Data files — too large for GitHub
+# Raw and processed datasets — managed via DVC, not tracked in Git
 data/
 
-# Logs — generated at runtime
+# Runtime execution logs — generated on each pipeline run
 logs/
 
-# Python cache
+# Python bytecode and cache directories
 __pycache__/
 *.pyc
 *.pyo
+
+# Virtual environment directory
 .venv/
 
-# MLflow runs
+# MLflow experiment tracking directory — generated at runtime
 mlruns/
