@@ -18,97 +18,102 @@ logging.basicConfig(
     ]
 )
 
-REPORTS_DIR       = "reports"
-DISPARITY_THRESHOLD = 0.05   # Flag if max group difference exceeds this
+REPORTS_DIR         = "reports"
+DISPARITY_THRESHOLD = 0.05  # Maximum acceptable metric difference between groups
 
 
 def detect_bias(model, X_test: pd.DataFrame,
                 y_test, sensitive_test,
                 model_name: str = "best_model") -> bool:
     """
-    Slices test data by sensitive feature (gender) and computes:
-      - Accuracy per group
-      - False Positive Rate per group
-      - True Positive Rate per group
-    Flags high disparity and saves a group metrics bar chart.
+    Evaluates model fairness by slicing test data across sensitive
+    feature groups (CODE_GENDER) and computing per-group metrics.
+
+    Metrics evaluated:
+        - Accuracy per group
+        - False Positive Rate per group
+        - True Positive Rate per group
+
+    Generates:
+        - Bar chart of per-group metrics saved to reports/
+        - Text bias report saved to reports/
 
     Returns:
-        True if bias is within acceptable limits, False if flagged.
+        True if all group disparities are within DISPARITY_THRESHOLD.
+        False if any metric exceeds the threshold (bias flagged).
     """
     os.makedirs(REPORTS_DIR, exist_ok=True)
-    logging.info(f"Running bias detection for {model_name}...")
+    logging.info(f"Initiating bias detection for model: {model_name}")
 
     y_pred = model.predict(X_test)
 
     metrics = {
-        "accuracy":          accuracy_score,
+        "accuracy":            accuracy_score,
         "false_positive_rate": false_positive_rate,
         "true_positive_rate":  true_positive_rate,
     }
 
     metric_frame = MetricFrame(
-        metrics           = metrics,
-        y_true            = y_test,
-        y_pred            = y_pred,
-        sensitive_features= sensitive_test
+        metrics           =metrics,
+        y_true            =y_test,
+        y_pred            =y_pred,
+        sensitive_features=sensitive_test
     )
 
-    # Log overall metrics
-    logging.info("--- Overall Metrics ---")
+    logging.info("Overall metrics:")
     for name, val in metric_frame.overall.items():
         logging.info(f"  {name}: {val:.4f}")
 
-    # Log per-group metrics
-    logging.info("--- Metrics by Group ---")
+    logging.info("Per-group metrics:")
     for group, row in metric_frame.by_group.iterrows():
         logging.info(f"  Group '{group}':")
         for name, val in row.items():
             logging.info(f"    {name}: {val:.4f}")
 
-    # Check disparities
+    # Compute maximum disparity between any two groups per metric
     diffs      = metric_frame.difference()
     bias_found = False
-    logging.info("--- Disparity Check ---")
+    logging.info("Group disparity analysis:")
     for name, diff in diffs.items():
-        logging.info(f"  Max difference in {name}: {diff:.4f}")
+        logging.info(f"  Maximum difference in {name}: {diff:.4f}")
         if diff > DISPARITY_THRESHOLD:
             logging.warning(
-                f"  HIGH DISPARITY in '{name}': {diff:.4f} "
-                f"(threshold={DISPARITY_THRESHOLD})"
+                f"  Disparity threshold exceeded in '{name}': "
+                f"{diff:.4f} (threshold: {DISPARITY_THRESHOLD})"
             )
             bias_found = True
 
-    # ── Bar chart of per-group metrics ───────────────────────
+    # Generate per-group metrics bar chart
     by_group = metric_frame.by_group
     ax       = by_group.plot(kind="bar", figsize=(10, 6), colormap="Set2")
     ax.set_title(f"Fairness Metrics by Group — {model_name}")
     ax.set_ylabel("Score")
     ax.set_xticklabels(ax.get_xticklabels(), rotation=0)
     ax.axhline(y=DISPARITY_THRESHOLD, color="red", linestyle="--",
-               label=f"Threshold ({DISPARITY_THRESHOLD})")
+               label=f"Disparity threshold ({DISPARITY_THRESHOLD})")
     ax.legend()
     plt.tight_layout()
     chart_path = os.path.join(REPORTS_DIR, f"bias_by_group_{model_name}.png")
     plt.savefig(chart_path)
     plt.close()
-    logging.info(f"Bias chart saved → {chart_path}")
+    logging.info(f"Bias chart saved: {chart_path}")
 
-    # Save bias report as text
+    # Save full bias report to text file
     report_path = os.path.join(REPORTS_DIR, f"bias_report_{model_name}.txt")
     with open(report_path, "w") as f:
         f.write("=== Overall Metrics ===\n")
         f.write(metric_frame.overall.to_string())
         f.write("\n\n=== Metrics by Group ===\n")
         f.write(metric_frame.by_group.to_string())
-        f.write("\n\n=== Max Disparities ===\n")
+        f.write("\n\n=== Maximum Disparities ===\n")
         f.write(diffs.to_string())
-    logging.info(f"Bias report saved → {report_path}")
+    logging.info(f"Bias report saved: {report_path}")
 
     if bias_found:
-        logging.warning("Bias detected. CorrelationRemover was applied at preprocessing.")
-        logging.warning("Further mitigation: consider ThresholdOptimizer post-processing.")
+        logging.warning("Bias detected. CorrelationRemover was applied at preprocessing stage.")
+        logging.warning("Recommended mitigation: apply ThresholdOptimizer post-processing (bias_mitigation.py).")
     else:
-        logging.info("No significant bias detected. Model is within fairness thresholds.")
+        logging.info("No significant bias detected. Model meets fairness thresholds.")
 
     return not bias_found
 
@@ -122,24 +127,21 @@ if __name__ == "__main__":
     from scripts.preprocessor import preprocess
 
     logging.info("=" * 60)
-    logging.info("ShiftHappens — Starting Bias Detection")
+    logging.info("ShiftHappens — Bias Detection")
     logging.info("=" * 60)
 
-    # Load and preprocess data
     df = load_data()
     X_train, X_test, y_train, y_test, s_train, s_test = preprocess(df)
 
-    # Load best saved model
     model_path = "models/best_model_LightGBM.pkl"
-    logging.info(f"Loading model from {model_path}...")
+    logging.info(f"Loading model from: {model_path}")
     with open(model_path, "rb") as f:
         model = pickle.load(f)
 
-    # Run bias detection — slices by gender, flags disparities
     passed = detect_bias(model, X_test, y_test, s_test, model_name="LightGBM")
 
     if passed:
-        logging.info("No significant bias detected. Model is fair across groups.")
+        logging.info("Model meets fairness thresholds. Proceed to model selection.")
     else:
-        logging.warning("Bias detected. CorrelationRemover was applied at preprocessing stage.")
-        logging.warning("Consider ThresholdOptimizer as additional post-processing mitigation.")
+        logging.warning("Bias detected. CorrelationRemover applied at preprocessing.")
+        logging.warning("Execute bias_mitigation.py to apply ThresholdOptimizer post-processing.")

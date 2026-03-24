@@ -14,6 +14,7 @@ logging.basicConfig(
     ]
 )
 
+# Feature column identifiers
 TARGET_COL        = "TARGET"
 SENSITIVE_FEATURE = "CODE_GENDER"
 DROP_COLS         = ["SK_ID_CURR", "TARGET"]
@@ -23,58 +24,59 @@ RANDOM_STATE      = 42
 
 def preprocess(df: pd.DataFrame):
     """
-    Full preprocessing pipeline:
-      1. Drop rows with missing TARGET
-      2. Label-encode all categorical columns
-      3. Median-fill remaining NaNs
-      4. Apply Fairlearn CorrelationRemover to debias features w.r.t. CODE_GENDER
-      5. Stratified train/test split
+    Executes the full preprocessing pipeline prior to model training.
+
+    Steps:
+        1. Remove rows with missing TARGET values.
+        2. Label-encode all categorical columns to numeric representations.
+        3. Impute remaining NaN values with column-wise median.
+        4. Apply Fairlearn CorrelationRemover to eliminate linear correlation
+           between input features and the sensitive attribute CODE_GENDER.
+        5. Perform stratified train/test split (80/20).
 
     Returns:
         X_train, X_test, y_train, y_test,
-        sensitive_train, sensitive_test  (encoded gender arrays)
+        sensitive_train, sensitive_test
     """
-    logging.info("Starting preprocessing...")
+    logging.info("Initiating preprocessing pipeline.")
     df = df.copy()
 
-    # 1. Drop rows where TARGET is missing
+    # Remove records where the target label is absent
     before = len(df)
     df = df.dropna(subset=[TARGET_COL])
-    logging.info(f"Dropped {before - len(df)} rows with missing TARGET.")
+    logging.info(f"Removed {before - len(df)} records with missing TARGET.")
 
     y = df[TARGET_COL].astype(int)
 
-    # 2. Preserve sensitive feature before we remove it from X
+    # Retain sensitive feature array prior to feature matrix construction
     sensitive_raw = df[SENSITIVE_FEATURE].copy() if SENSITIVE_FEATURE in df.columns else None
 
-    # 3. Build feature matrix — drop ID and target
+    # Construct feature matrix excluding identifier and target columns
     X = df.drop(columns=[c for c in DROP_COLS if c in df.columns])
 
-    # 4. Label-encode all object/category columns
+    # Encode categorical columns to integer labels
     for col in X.select_dtypes(include=["object", "category"]).columns:
         X[col] = LabelEncoder().fit_transform(X[col].astype(str))
 
-    # 5. Fill remaining NaNs with column median
+    # Impute missing values using column median
     X = X.fillna(X.median(numeric_only=True))
-    logging.info(f"Feature matrix shape after encoding & imputation: {X.shape}")
+    logging.info(f"Feature matrix shape post encoding and imputation: {X.shape}")
 
-
-    # 6. Fairlearn CorrelationRemover — removes linear correlation between
-    #    features and sensitive attribute (gender) as a pre-processing
-    #    bias mitigation step.
+    # Apply CorrelationRemover to reduce linear dependence between features
+    # and the sensitive attribute as a pre-processing fairness intervention
     if sensitive_raw is not None and SENSITIVE_FEATURE in X.columns:
-        logging.info(f"Applying CorrelationRemover for '{SENSITIVE_FEATURE}'...")
+        logging.info(f"Applying CorrelationRemover for sensitive feature: {SENSITIVE_FEATURE}")
         sensitive_encoded = LabelEncoder().fit_transform(sensitive_raw.astype(str))
-        cr = CorrelationRemover(sensitive_feature_ids=[SENSITIVE_FEATURE])
+        cr    = CorrelationRemover(sensitive_feature_ids=[SENSITIVE_FEATURE])
         X_arr = cr.fit_transform(X)
         remaining_cols = [c for c in X.columns if c != SENSITIVE_FEATURE]
         X = pd.DataFrame(X_arr, columns=remaining_cols, index=X.index)
-        logging.info("CorrelationRemover applied. Sensitive feature removed from X.")
+        logging.info("CorrelationRemover applied. Sensitive feature removed from feature matrix.")
     else:
-        logging.warning(f"'{SENSITIVE_FEATURE}' not found — skipping CorrelationRemover.")
+        logging.warning(f"Sensitive feature '{SENSITIVE_FEATURE}' not found. CorrelationRemover skipped.")
         sensitive_encoded = np.zeros(len(y))
 
-    # 7. Stratified train/test split
+    # Stratified split preserving TARGET class distribution across train and test sets
     X_train, X_test, y_train, y_test, s_train, s_test = train_test_split(
         X, y, sensitive_encoded,
         test_size=TEST_SIZE,
@@ -82,6 +84,6 @@ def preprocess(df: pd.DataFrame):
         stratify=y
     )
 
-    logging.info(f"Train: {X_train.shape} | Test: {X_test.shape}")
-    logging.info(f"Target split — Train: {dict(y_train.value_counts())} | Test: {dict(y_test.value_counts())}")
+    logging.info(f"Train shape: {X_train.shape} | Test shape: {X_test.shape}")
+    logging.info(f"Class distribution — Train: {dict(y_train.value_counts())} | Test: {dict(y_test.value_counts())}")
     return X_train, X_test, y_train, y_test, s_train, s_test

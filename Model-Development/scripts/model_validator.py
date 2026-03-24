@@ -21,20 +21,26 @@ logging.basicConfig(
 REPORTS_DIR       = "reports"
 MLFLOW_EXPERIMENT = "ShiftHappens_Model_Development"
 
-# Thresholds adjusted for imbalanced dataset (only 8% positive class)
-# F1 of 0.28+ is realistic for heavily imbalanced credit default data
+# Minimum acceptable metric thresholds for deployment approval.
+# F1 threshold set conservatively due to class imbalance (8% positive class).
 PASS_THRESHOLDS = {
-    "roc_auc":  0.70,   # Strong threshold — our model hits 0.7779
-    "f1":       0.25,   # Realistic for 8% positive class imbalance
-    "accuracy": 0.60,   # Our model hits 0.7335
+    "roc_auc":  0.70,
+    "f1":       0.25,
+    "accuracy": 0.60,
 }
+
 
 def validate_model(model, X_test, y_test, model_name: str = "best_model") -> bool:
     """
-    Validates model on hold-out test set.
-    Generates ROC curve, PR curve, and classification report.
-    Logs everything to MLflow.
-    Returns True if model passes all PASS_THRESHOLDS, False otherwise.
+    Validates the trained model on the hold-out test set.
+
+    Generates:
+        - ROC curve and Precision-Recall curve saved to reports/
+        - Classification report saved to reports/
+        - Validation metrics logged to MLflow
+
+    Returns:
+        True if all PASS_THRESHOLDS are met, False otherwise.
     """
     os.makedirs(REPORTS_DIR, exist_ok=True)
     logging.info(f"Validating model: {model_name}")
@@ -48,7 +54,7 @@ def validate_model(model, X_test, y_test, model_name: str = "best_model") -> boo
         "val_accuracy": accuracy_score(y_test, y_pred),
     }
 
-    logging.info("--- Validation Metrics ---")
+    logging.info("Validation metrics:")
     for k, v in metrics.items():
         logging.info(f"  {k}: {v:.4f}")
 
@@ -57,9 +63,9 @@ def validate_model(model, X_test, y_test, model_name: str = "best_model") -> boo
     report_path = os.path.join(REPORTS_DIR, f"classification_report_{model_name}.txt")
     with open(report_path, "w") as f:
         f.write(report)
-    logging.info(f"Classification report saved → {report_path}")
+    logging.info(f"Classification report saved: {report_path}")
 
-    # ROC + PR curves saved to reports/
+    # Generate ROC and Precision-Recall curves
     fpr, tpr, _          = roc_curve(y_test, y_proba)
     precision, recall, _ = precision_recall_curve(y_test, y_proba)
 
@@ -79,28 +85,27 @@ def validate_model(model, X_test, y_test, model_name: str = "best_model") -> boo
     curve_path = os.path.join(REPORTS_DIR, f"roc_pr_curves_{model_name}.png")
     plt.savefig(curve_path)
     plt.close()
-    logging.info(f"ROC/PR curves saved → {curve_path}")
+    logging.info(f"ROC and PR curves saved: {curve_path}")
 
-    # Log to MLflow
+    # Log metrics and artifacts to MLflow
     mlflow.set_experiment(MLFLOW_EXPERIMENT)
     with mlflow.start_run(run_name=f"{model_name}_Validation"):
         mlflow.log_metrics(metrics)
         mlflow.log_artifact(curve_path)
         mlflow.log_artifact(report_path)
 
-    # Threshold check
+    # Evaluate metrics against minimum thresholds
     passed = True
     for key, threshold in PASS_THRESHOLDS.items():
-        metric_key = f"val_{key}"
-        val = metrics.get(metric_key, 0)
+        val = metrics.get(f"val_{key}", 0)
         if val < threshold:
-            logging.warning(f"VALIDATION FAILED: {metric_key} = {val:.4f} (required >= {threshold})")
+            logging.warning(f"Threshold not met: val_{key} = {val:.4f} (minimum: {threshold})")
             passed = False
 
     if passed:
-        logging.info(f"Validation PASSED for {model_name}. All thresholds met.")
+        logging.info(f"Validation passed for {model_name}. All thresholds satisfied.")
     else:
-        logging.error(f"Validation FAILED for {model_name}. Check reports/.")
+        logging.error(f"Validation failed for {model_name}. Review reports/ for details.")
 
     return passed
 
@@ -114,23 +119,20 @@ if __name__ == "__main__":
     from scripts.preprocessor import preprocess
 
     logging.info("=" * 60)
-    logging.info("ShiftHappens — Starting Model Validation")
+    logging.info("ShiftHappens — Model Validation")
     logging.info("=" * 60)
 
-    # Load and preprocess data
     df = load_data()
     X_train, X_test, y_train, y_test, s_train, s_test = preprocess(df)
 
-    # Load best saved model
     model_path = "models/best_model_LightGBM.pkl"
-    logging.info(f"Loading model from {model_path}...")
+    logging.info(f"Loading model from: {model_path}")
     with open(model_path, "rb") as f:
         model = pickle.load(f)
 
-    # Validate on hold-out test set
     passed = validate_model(model, X_test, y_test, model_name="LightGBM")
 
     if passed:
-        logging.info("Model passed all thresholds. Ready for bias detection.")
+        logging.info("Model approved. Proceed to bias detection.")
     else:
-        logging.error("Model failed validation. Review reports/.")
+        logging.error("Model rejected. Review validation reports before proceeding.")
