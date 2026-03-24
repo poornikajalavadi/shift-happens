@@ -237,3 +237,39 @@ All saved to `reports/` at runtime:
 | `classification_report_LightGBM.txt` | Full precision/recall/F1 per class |
 | `bias_by_group_LightGBM.png` | Fairness metrics by gender group |
 | `bias_report_LightGBM.txt` | Full disparity numbers across groups |
+
+
+## Model Interpretability (SHAP Analysis)
+To ensure our model's decisions are transparent, fair, and easily explainable to stakeholders, we implemented SHAP (SHapley Additive exPlanations) using the highly optimized TreeExplainer.
+
+1. Global Feature Importance
+   
+![Global SHAP summary plot](assets/Figure_1.png)
+
+The global summary plot reveals the top drivers of default risk across the entire dataset:
+
+External Sources: Normalized scores from external credit data providers (EXT_SOURCE_1, 2, and 3) dominate the model's decision-making process. Low external scores strongly push the model toward predicting a default.
+
+Historical Behaviors: Engineered features from our Airflow pipeline, such as INSTALLMENTS_AMT_PAYMENT_MIN, play a significant role, proving the value of our upstream relational data aggregation.
+
+1. Categorical Risk Drivers: Occupation Type
+   
+![OCCUPATION_TYPR Dependence Plot](assets/Figure_2.png)
+
+By utilizing SHAP dependence plots, we opened the "black box" to unpack the exact risk assigned to non-ordinal categories:
+
+High-Risk Roles: The model identified "Low-skill Laborers" and "Drivers" as having a heavily increased historical risk of default.
+
+Low-Risk Roles: Occupations like "Accountants" and "Core staff" consistently lower the predicted risk score.
+
+The Power of 'Missing': Applicants who declined to state their occupation actually lean slightly toward lower risk. This validates our pipeline decision to explicitly label missing data rather than simply dropping or blindly imputing it.
+
+1. Continuous Risk Discovery: Age Dynamics
+   
+![DAYS_BIRTH Dependence Plot](assets/Figure_3.png)
+
+The dependence plot for DAYS_BIRTH showcases LightGBM's ability to capture complex, non-linear relationships that traditional linear models miss:
+
+The Mid-Life Plateau: The highest risk concentration occurs among applicants in their late 20s to late 40s.
+
+The Retirement Spike: The model independently discovered a sharp, sudden spike in default risk at approximately 65 years of age (around -24,000 days), effectively pinpointing the financial instability that can accompany the transition to fixed retirement incomes.
