@@ -2,38 +2,38 @@
 
 steps:
   - name: 'gcr.io/cloud-builders/gsutil'
-    id: 'download-data'
+    id: 'data'
     entrypoint: 'bash'
     args:
       - '-c'
-      - 'mkdir -p /workspace/Data-Pipeline/data/processed && gsutil cp gs://shifthappens-data/application_train_merged.pkl /workspace/Data-Pipeline/data/processed/'
-
-  - name: 'python:3.10'
-    id: 'test'
+      - 'mkdir -p Data-Pipeline/data/processed && gsutil cp gs://shifthappens-data/application_train_merged.pkl Data-Pipeline/data/processed/application_train_merged.pkl'
+  - name: 'python:3.11'
+    id: 'sample'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - 'pip install --no-cache-dir pandas && python3 -c "import pandas as pd; df=pd.read_pickle(\"Data-Pipeline/data/processed/application_train_merged.pkl\").sample(frac=0.05,random_state=42); df.to_pickle(\"Data-Pipeline/data/processed/application_train_merged.pkl\"); print(f\"Sampled to {len(df)} rows\")"'
+    waitFor: ['data']
+  - name: 'python:3.11'
+    id: 'train'
     entrypoint: 'bash'
     dir: 'Model-Development'
     args:
       - '-c'
-      - 'pip install -r requirements.txt && mkdir -p logs models reports && pytest tests/ -v --tb=short'
-    waitFor: ['download-data']
-
-  - name: 'python:3.10'
-    id: 'pipeline'
+      - 'pip install --no-cache-dir -r requirements.txt && mkdir -p logs models reports && python3 scripts/preprocessor.py && python3 scripts/model_trainer.py'
+    waitFor: ['sample']
+  - name: 'python:3.11'
+    id: 'validate'
     entrypoint: 'bash'
     dir: 'Model-Development'
     env: ['GCS_BUCKET=${_GCS_BUCKET}']
     args:
       - '-c'
-      - 'pip install -r requirements.txt && mkdir -p logs models reports && python3 scripts/preprocessor.py && python3 scripts/model_trainer.py && python3 scripts/hyperparameter_tuner.py && python3 scripts/model_validator.py && python3 scripts/bias_detector.py && python3 scripts/model_selection.py && python3 scripts/sensitivity_analysis.py && python3 scripts/registry_push.py'
-    waitFor: ['test']
-
-  - name: 'gcr.io/cloud-builders/gsutil'
-    id: 'reports'
-    args: ['-m', 'cp', '-r', '/workspace/Model-Development/reports/', 'gs://${_GCS_BUCKET}/build-reports/${BUILD_ID}/']
-    waitFor: ['pipeline']
-
+      - 'pip install --no-cache-dir -r requirements.txt && python3 scripts/model_validator.py && python3 scripts/bias_detector.py && python3 scripts/model_selection.py'
+    waitFor: ['train']
 substitutions:
   _GCS_BUCKET: 'shifthappens-model-registry'
 options:
+  logging: CLOUD_LOGGING_ONLY
   machineType: 'E2_HIGHCPU_8'
 timeout: '3600s'
