@@ -218,3 +218,4 @@ if __name__ == "__main__":
         logging.info(f"  {k}: {v:.4f}")
     logging.info(f"Model path: {model_path}")
     logging.info("=" * 60)
+# trigger test
