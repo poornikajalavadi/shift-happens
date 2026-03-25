@@ -65,9 +65,9 @@ def tune_model(model_name: str, base_model, X_train, y_train):
     search = RandomizedSearchCV(
         estimator=base_model,
         param_distributions=PARAM_GRIDS[model_name],
-        n_iter=20,
+        n_iter=5,
         scoring="roc_auc",
-        cv=3,
+        cv=2,
         n_jobs=-1,
         random_state=RANDOM_STATE,
         verbose=1,
