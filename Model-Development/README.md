@@ -378,4 +378,173 @@ Email alerts are configured via **Cloud Monitoring** alerting policies. Notifica
 - Bias detection flags significant disparity
 - Registry push is blocked by rollback mechanism
 
+# CI/CD Pipeline — Google Cloud Build
+
+## Overview
+This CI/CD pipeline automates the prediction workflow for **ShiftHappens** using Google Cloud Build. Every time code is pushed to the `main` branch, the pipeline automatically loads the trained LightGBM model, generates predictions on new loan application data, and uploads the results to Google Cloud Storage.
+
+The pipeline does **not** retrain the model on every push. The model (`.pkl` file) is already trained and stored in GCS. Retraining is only triggered by the monitoring system when data drift is detected.
+
+## Pipeline Architecture
+
+```
+Developer pushes code (git push origin main)
+      ↓
+GitHub triggers Cloud Build automatically
+      ↓
+┌─────────────────────────────────────────────┐
+│         Google Cloud Build Pipeline         │
+│                                             │
+│  Step 0: Download data + model from GCS     │
+│     ├── application_train_merged.pkl        │
+│     └── best_model_LightGBM_tuned.pkl       │
+│                   ↓                         │
+│  Step 1: Run predictor.py                   │
+│     ├── Load trained LightGBM model         │
+│     ├── Read new loan application data      │
+│     ├── Preprocess (encode, impute, debias) │
+│     ├── Generate predictions                │
+│     └── Add PREDICTION + PREDICTION_PROBA   │
+│                   ↓                         │
+│  Step 2: Upload predictions to GCS          │
+│     └── predictions.csv → gs://bucket/      │
+│                                             │
+└─────────────────────────────────────────────┘
+      ↓
+Streamlit dashboard + monitoring system
+can access predictions from GCS
+```
+
+## How It Works
+
+### Step 0 — Download data and model from GCS (~20 seconds)
+The training dataset and trained model are too large for GitHub. They are stored in Google Cloud Storage and downloaded at the start of every build.
+
+- **Data:** `gs://shifthappens-data/application_train_merged.pkl`
+- **Model:** `gs://shifthappens-data/best_model_LightGBM_tuned.pkl`
+
+### Step 1 — Run predictor.py (~1 minute)
+The predictor script loads the trained LightGBM model and generates predictions on new loan application data.
+
+- Installs Python dependencies from `requirements.txt`
+- Creates a sample of 100 loan applications from the training dataset
+- Runs `predictor.py` which:
+  - Loads `best_model_LightGBM_tuned.pkl`
+  - Preprocesses new data (encoding, imputation, CorrelationRemover for gender bias)
+  - Generates predictions for each loan application
+  - Adds two new columns: `PREDICTION` (0 = safe, 1 = default) and `PREDICTION_PROBA` (confidence score between 0.0 and 1.0)
+  - Saves the output to `predictions/new_applications_predictions.csv`
+
+### Step 2 — Upload predictions to GCS (~2 seconds)
+The predictions CSV is uploaded to `gs://shifthappens-model-registry/predictions/` so the Streamlit dashboard and monitoring system can access the results from anywhere.
+
+**Total pipeline duration: ~2 minutes**
+
+## GCP Services Used
+
+| Service | Purpose |
+|---|---|
+| Cloud Build | Orchestrates the CI/CD pipeline |
+| Cloud Storage (GCS) | Stores training data, model, and predictions |
+| Secret Manager | Stores GitHub authentication tokens |
+
+## GCS Buckets
+
+| Bucket | Contents |
+|---|---|
+| `shifthappens-data` | Training dataset (`application_train_merged.pkl`) and trained model (`best_model_LightGBM_tuned.pkl`) |
+| `shifthappens-model-registry` | Prediction outputs, production models, and archived versions |
+
+## Cloud Build Trigger Configuration
+
+| Setting | Value |
+|---|---|
+| Trigger name | `shifthappens-model-pipeline` |
+| Region | `northamerica-northeast2` |
+| Event | Push to branch `main` |
+| Source | `poornikajalavadi/shift-happens` (GitHub) |
+| Configuration | Inline YAML |
+| Service account | `cloudbuild-runner@shifthappens-project.iam.gserviceaccount.com` |
+| Machine type | `E2_HIGHCPU_8` |
+| Timeout | 600 seconds |
+
+## Prediction Output
+
+The predictor adds two columns to the original loan application data:
+
+| Column | Description | Values |
+|---|---|---|
+| `PREDICTION` | Will this person default on their loan? | 0 = safe, 1 = default |
+| `PREDICTION_PROBA` | How confident is the model? | 0.0 to 1.0 (e.g., 0.87 = 87% chance of default) |
+
+Example output:
+
+| SK_ID_CURR | AMT_INCOME | AMT_CREDIT | PREDICTION | PREDICTION_PROBA |
+|---|---|---|---|---|
+| 100001 | 50000 | 200000 | 0 | 0.12 |
+| 100002 | 30000 | 500000 | 1 | 0.87 |
+
+## Key Commands
+
+**Upload training data to GCS:**
+```bash
+gcloud storage cp Data-Pipeline/data/processed/application_train_merged.pkl gs://shifthappens-data/
+```
+
+**Upload trained model to GCS:**
+```bash
+gcloud storage cp Model-Development/models/best_model_LightGBM_tuned.pkl gs://shifthappens-data/
+```
+
+**Run predictor locally:**
+```bash
+python3 scripts/predictor.py data/new_applications.csv
+```
+
+**Trigger build manually from CLI:**
+```bash
+gcloud builds triggers run shifthappens-model-pipeline --region=northamerica-northeast2 --branch=main
+```
+
+**View build history:**
+```bash
+gcloud builds list --region=northamerica-northeast2
+```
+
+**Check predictions in GCS:**
+```bash
+gcloud storage ls gs://shifthappens-model-registry/predictions/
+```
+
+## How CI/CD Connects to the Full Project
+
+```
+Phase 1: Data Pipeline (done)
+    → Produces application_train_merged.pkl
+    → Uploaded to GCS
+
+Phase 2: Model Development (done)
+    → Trains LightGBM model
+    → Produces best_model_LightGBM_tuned.pkl
+    → Uploaded to GCS
+
+Phase 2.5: CI/CD Pipeline (this)
+    → On every code push: loads model → predicts → uploads to GCS
+    → No retraining — just predictions
+
+Phase 3: Monitoring + Self-Healing (next)
+    → Monitors predictions for data drift
+    → If drift detected → triggers retraining pipeline
+    → New model trained, validated, pushed to registry
+```
+
+## Files
+
+| File | Description |
+|---|---|
+| `scripts/predictor.py` | Loads trained model, generates predictions on new data |
+| `scripts/data_loader.py` | Loads the merged dataset from Data Pipeline |
+| `scripts/registry_push.py` | Pushes model to GCS with rollback mechanism |
+| `.gcloudignore` | Excludes large files from Cloud Build uploads |
+
 
