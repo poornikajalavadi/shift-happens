@@ -1,9 +1,3 @@
-# Intermediate trained model files — excluded due to file size constraints
-models/best_model_*.pkl
-
-# Final production-ready debiased model — included for repository reproducibility
-!models/final_model_debiased.pkl
-
 # Raw and processed datasets — managed via DVC, not tracked in Git
 data/
 
