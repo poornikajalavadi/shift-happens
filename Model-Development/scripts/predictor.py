@@ -39,7 +39,7 @@ DROP_COLS         = ["SK_ID_CURR", "TARGET"]
 
 def load_model():
     """Load the best tuned LightGBM model."""
-    model_path = os.path.join(MODELS_DIR, "best_model_LightGBM_tuned.pkl")
+    model_path = os.path.join(MODELS_DIR, "final_model_debiased.pkl")
 
     if not os.path.exists(model_path):
         logging.error(f"Model not found: {model_path}")
