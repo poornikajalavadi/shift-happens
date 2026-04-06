@@ -38,7 +38,7 @@ DROP_COLS         = ["SK_ID_CURR", "TARGET"]
 
 
 def load_model():
-    """Load the best tuned LightGBM model."""
+    """Load the final debiased model."""
     model_path = os.path.join(MODELS_DIR, "final_model_debiased.pkl")
 
     if not os.path.exists(model_path):
@@ -58,8 +58,18 @@ def load_model():
 def get_model_features(model):
     """
     Extract the feature names the model was trained on.
-    Works with LightGBM and scikit-learn models.
+    Works with LightGBM, scikit-learn, and ThresholdOptimizer models.
     """
+    # For ThresholdOptimizer, get features from the underlying estimator
+    if hasattr(model, 'estimator_'):
+        inner = model.estimator_
+        if hasattr(inner, 'feature_name_'):
+            return inner.feature_name_
+        elif hasattr(inner, 'booster_'):
+            return inner.booster_.feature_name()
+        elif hasattr(inner, 'feature_names_in_'):
+            return list(inner.feature_names_in_)
+
     if hasattr(model, 'feature_name_'):
         return model.feature_name_
     elif hasattr(model, 'booster_'):
@@ -162,8 +172,25 @@ def predict(model, df: pd.DataFrame) -> pd.DataFrame:
 
     # Generate predictions
     logging.info("Generating predictions...")
-    predictions   = model.predict(X)
-    probabilities = model.predict_proba(X)[:, 1]
+
+    # Check if model is a ThresholdOptimizer (fairlearn debiased model)
+    if hasattr(model, 'estimator_'):
+        logging.info("Detected ThresholdOptimizer — passing sensitive_features.")
+        sensitive = df[SENSITIVE_FEATURE].copy() if SENSITIVE_FEATURE in df.columns else None
+        if sensitive is not None:
+            sensitive_encoded = LabelEncoder().fit_transform(sensitive.astype(str))
+            predictions = model.predict(X, sensitive_features=sensitive_encoded)
+            try:
+                probabilities = model.predict_proba(X, sensitive_features=sensitive_encoded)[:, 1]
+            except (AttributeError, TypeError):
+                logging.warning("predict_proba not available, using predictions as probabilities.")
+                probabilities = predictions.astype(float)
+        else:
+            logging.error(f"Sensitive feature '{SENSITIVE_FEATURE}' not found for ThresholdOptimizer.")
+            sys.exit(1)
+    else:
+        predictions   = model.predict(X)
+        probabilities = model.predict_proba(X)[:, 1]
 
     # Add prediction columns to original data
     result = df.copy()
